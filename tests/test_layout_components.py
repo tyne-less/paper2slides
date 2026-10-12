@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
-from pdf2slides.application_rendering import render_application_slide
+from pdf2slides.application_rendering import _draw_body, render_application_slide
 from pdf2slides.application_variants import create_application_variant, write_application_variant
 from pdf2slides.page_regions import parse_yolo_label_line
 from pdf2slides.schema import ApplicationLayout, EvidenceAsset, PixelBox, PixelCanvas, Slide, SlideDeck
@@ -47,6 +47,40 @@ class LayoutComponentTests(unittest.TestCase):
             manifest = write_application_variant(variant, root)
             self.assertTrue((variant.directory / manifest["rendered_slide"]).is_file())
             self.assertEqual(deck.slides[0].application_layout, None)
+
+    def test_reflowed_multiline_bullet_has_one_marker(self) -> None:
+        image = Image.new("RGB", (240, 240), "white")
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.load_default(size=18)
+        layout = self._body_layout("reflow_within_fixed_box")
+        slide = Slide("slide_01", "Title", ["This bullet is deliberately long enough to wrap over more than one line."], ["Synthetic"], "text")
+        _draw_body(draw, slide, layout, font)
+        marker_pixels = sum(
+            image.getpixel((x, y)) == (17, 17, 17)
+            for x in range(layout.body_box.x, layout.body_box.x + 8)
+            for y in range(layout.body_box.y, layout.body_box.y + layout.body_box.height)
+        )
+        self.assertGreater(marker_pixels, 0)
+        self.assertLess(marker_pixels, 70)
+
+    def test_unchanged_body_rejects_a_bullet_that_requires_reflow(self) -> None:
+        image = Image.new("RGB", (240, 240), "white")
+        draw = ImageDraw.Draw(image)
+        font = ImageFont.load_default(size=18)
+        layout = self._body_layout("unchanged")
+        slide = Slide("slide_01", "Title", ["This bullet is deliberately long enough to wrap over more than one line."], ["Synthetic"], "text")
+        with self.assertRaises(ValueError):
+            _draw_body(draw, slide, layout, font)
+
+    def _body_layout(self, body_behavior: str) -> ApplicationLayout:
+        evidence = EvidenceAsset(
+            repository_path="fixtures/evidence.png",
+            sha256="0" * 64,
+            intrinsic_width=1,
+            intrinsic_height=1,
+            crop=PixelBox(0, 0, 1, 1),
+        )
+        return ApplicationLayout(PixelCanvas(240, 240), PixelBox(0, 0, 1, 1), PixelBox(10, 10, 180, 220), PixelBox(190, 10, 40, 40), evidence, body_behavior=body_behavior)
 
 
 if __name__ == "__main__":
