@@ -1,106 +1,29 @@
 # Paper2Slides
 
-> A modular multimodal pipeline for converting academic papers into structured, presentation-ready slides.
+> An evaluation-driven multimodal research prototype for transforming academic PDFs into structured presentation outputs.
 
----
-
-## Overview
-
-Paper2Slides addresses the problem of transforming academic PDFs into coherent slide presentations.
-
-Unlike traditional approaches that treat this task as text summarization, this project models it as a **multimodal document understanding and structured transformation problem**.
-
-Scientific papers contain complex layouts, figures, tables, and hierarchical structures that must be preserved and reorganized to produce high-quality presentations.
-
-This repository provides a modular, end-to-end pipeline that explicitly represents each transformation stage, enabling systematic analysis, debugging, and improvement.
-
-## Key Idea
-
-Generating slides from research papers is fundamentally different from summarization.
-
-A useful presentation must preserve and reorganize:
-- document structure,
-- reading order,
-- figure and table context,
-- formula-related content,
-- logical progression across sections.
-
-Paper2Slides therefore treats the task as:
-
-**academic PDF -> structured document representation -> slide plan -> presentation output**
-
-This design makes the system more interpretable, modular, and extensible than a black-box end-to-end generator.
-
-## Pipeline
-
-`PDF -> text/layout extraction -> block detection -> OCR/transcription -> structure parsing -> structured document JSON -> slide planning -> LaTeX Beamer output`
-
-The current implementation already follows this architecture end-to-end, with placeholder components used where research modules are still under development.
-
-## Project Structure
+Paper2Slides studies academic PDF-to-slides generation as a structured document-understanding problem, not simply text summarization. A useful presentation needs recoverable document structure, readable order, grounded visual evidence, and an explicit slide plan before it can be rendered.
 
 ```text
-.
-├── examples/              # Checked-in example pipeline outputs
-├── src/pdf2slides/        # Core pipeline code
-├── tests/                 # Minimal smoke tests
-├── pyproject.toml         # Minimal Python packaging metadata
-└── README.md
+academic PDF -> structured document representation -> slide plan -> presentation output
 ```
 
-## Environment / Reproducibility
+## What runs by default
 
-Minimum environment:
-- Python `3.10+`
-- a Unix-like shell environment
-- `pdftotext` available on `PATH`
-
-Install the Python package in editable mode from the repository root:
+The public command-line pipeline is a compact, reproducible baseline. It extracts text with `pdftotext`, builds page and block records, applies lightweight structure and reading-order heuristics, writes a structured document JSON file, plans a slide deck, and exports LaTeX Beamer source.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install --upgrade pip
 python3 -m pip install -e .
+
+# Install Poppler separately so `pdftotext` is available on PATH.
+python3 -m pdf2slides path/to/local-paper.pdf --output-root outputs
 ```
 
-Install `pdftotext`:
+On macOS, install Poppler with `brew install poppler`; on Ubuntu or Debian, use `sudo apt-get install poppler-utils`.
 
-```bash
-# macOS (Homebrew)
-brew install poppler
-
-# Ubuntu / Debian
-sudo apt-get install poppler-utils
-```
-
-The current minimal pipeline calls `pdftotext` directly. If it is missing, the extraction stage will fail with a runtime error.
-
-The checked-in example artifacts can be inspected without running the code. The original source PDF for that snapshot is not distributed in the public repository; use any local academic PDF to reproduce a fresh run.
-
-## Usage
-
-Run the minimal end-to-end pipeline on a PDF:
-
-```bash
-python3 -m pdf2slides path/to/input.pdf --output-root outputs
-```
-
-For example:
-
-```bash
-python3 -m pdf2slides \
-  path/to/local-paper.pdf \
-  --output-root outputs
-```
-
-Run the minimal smoke test suite:
-
-```bash
-python3 -m unittest discover -s tests
-```
-
-Example outputs:
+The baseline produces explicit intermediate artifacts:
 
 ```text
 outputs/<pdf-stem>/
@@ -113,107 +36,51 @@ outputs/<pdf-stem>/
   RUN_SUMMARY.md
 ```
 
-## Demo
+## Research modules
 
-Paper2Slides exposes structured intermediate representations instead of hiding the transformation inside a single black-box model.
+The repository also includes reusable components developed alongside the baseline. They are deliberately separate from the default CLI while their integration is evaluated:
 
-Minimal structured-document artifact shape:
+- `page_regions.py` converts YOLO-format page labels into page-coordinate region records.
+- `schema.py` defines an optional slide application-layout contract for a title, body, and visual-evidence region.
+- `application_rendering.py` deterministically renders an application-layout slide PNG from a checked evidence asset.
+- `application_variants.py` creates isolated layout variants without changing the source deck.
 
-```json
-{
-  "title": "Initial Research Proposal",
-  "sections": [
-    {
-      "heading": "Introduction",
-      "page_number": 1,
-      "content_blocks": [
-        {
-          "block_id": "p1_b2",
-          "block_type": "paragraph",
-          "text": "Paper2Slides models academic PDF to slides as a structured document transformation problem."
-        }
-      ]
-    }
-  ],
-  "abstract": "A modular pipeline that converts academic PDFs into structured slide drafts."
-}
+These modules support controlled experiments in layout, crop/fit behavior, and visual evidence selection. They do not imply that the default baseline already performs learned layout prediction or production-quality presentation design.
+
+## Research progress
+
+### Document reconstruction and reading order
+
+On a frozen eight-paper aggregate benchmark, high-level structure recovery is stable: title `8/8`, abstract `8/8`, normalized sections `71/71`, and subsections `91/91`. Fine-grained reconstruction remains harder: paragraph anchors `340/355`, paragraph order `291/340`, figure captions `22/23`, figure-caption order `20/22`, and table captions `35/36`.
+
+These are diagnostic aggregate results, not a claim that every document object is fully reconstructed. They show that paragraph boundaries, local reading order, captions, formulas, tables, and footnotes remain central research problems. See [the reconstruction note](docs/research/reconstruction-evaluation.md) and [the reading-order evaluation guide](docs/reading-order-evaluation.md).
+
+### Human-authored structural evaluation
+
+The project has progressed from proxy-only reading-order scores to parser-independent, human-authored fixtures. Fixtures can represent paragraphs, formulas, table bodies, footnotes, and page or column structure when available. Parser candidates are reviewed against these references rather than treated as ground truth. [The fixture-evaluation note](docs/research/human-fixture-evaluation.md) describes the public methodology and its boundaries.
+
+### Downstream slide generation
+
+Research prototypes cover slide planning, visual-evidence selection, layout variants, deterministic rendering, crop/fit behavior, human visual judgment, and downstream slide-impact analysis. These experiments test whether reconstructed evidence improves a slide, rather than assuming that successful extraction is sufficient.
+
+### Source grouping
+
+Source grouping research found that token coverage alone cannot establish whether a group is clean. Combined diagnostics can distinguish clean groups from boundary, identity, and incomplete-export failures; reviewed trim proposals provide a practical repair mechanism for boundary over-inclusion. [The source-grouping note](docs/research/source-grouping.md) records the supported conclusion and its limits.
+
+## Demo snapshot
+
+The checked-in [initial research proposal snapshot](examples/2025-04-20-initial-research-proposal/README.md) is a small, inspectable example of the default pipeline. It includes raw extraction, page and block representations, a structured-document IR, a slide plan, and Beamer source. The original PDF is intentionally not redistributed.
+
+## Scope and limitations
+
+Paper2Slides is a research prototype with an end-to-end scaffold and increasingly rigorous evaluation. The default pipeline still uses lightweight extraction, parsing, and slide-planning heuristics. Experimental modules are not silently substituted into that path. The work does not yet claim robust performance across arbitrary publication styles or a completed automatic paper-to-slides system.
+
+## Development
+
+Run the tests with:
+
+```bash
+python3 -m unittest discover -s tests
 ```
 
-The repository includes a checked-in example snapshot so the full pipeline can be inspected without running the code.
-
-**Example input**
-- source PDF: omitted from the public repository
-
-**Checked-in example snapshot**
-- overview: `examples/2025-04-20-initial-research-proposal/README.md`
-
-**Stage 1: Raw extraction**
-- raw text: `examples/2025-04-20-initial-research-proposal/01_raw_text.txt`
-
-**Stage 2: Page-level representation**
-- pages: `examples/2025-04-20-initial-research-proposal/02_pages.json`
-
-**Stage 3: Block-level representation**
-- detected blocks: `examples/2025-04-20-initial-research-proposal/03_blocks.json`
-
-**Stage 4: Structured document IR**
-- structured document: `examples/2025-04-20-initial-research-proposal/04_structured_document.json`
-
-**Stage 5: Slide planning**
-- slide deck plan: `examples/2025-04-20-initial-research-proposal/05_slide_deck.json`
-
-**Stage 6: Rendered output**
-- Beamer source: `examples/2025-04-20-initial-research-proposal/06_slides.tex`
-- run summary: `examples/2025-04-20-initial-research-proposal/RUN_SUMMARY.md`
-
-## Why This Is Hard
-
-This problem is harder than standard text summarization because the system has to preserve both content and document structure.
-
-Three concrete challenges are:
-
-1. `Reading order recovery`
-   Scientific PDFs often use two-column layouts, floating figures, footnotes, and section headers. Even if blocks are detected correctly, a wrong reading order can break paragraph continuity and downstream structure parsing.
-
-2. `Caption grounding`
-   A useful slide generator must know which caption belongs to which figure or table, and whether that visual element should appear in the same slide as the surrounding text. This is not recoverable from plain text alone.
-
-3. `Section compression`
-   Slides cannot preserve paper sections verbatim. The system has to compress sections into a short presentation narrative while deciding what to keep, what to merge, and what to omit without losing the paper's core logic.
-
-## Current Status
-
-This repository currently provides:
-- a runnable end-to-end prototype,
-- explicit intermediate representations for each stage,
-- a modular architecture designed for future replacement with stronger models.
-
-The present emphasis is **system architecture and research scaffolding**, not benchmark accuracy. Layout detection, OCR, structure parsing, and slide generation are currently implemented with lightweight placeholder logic to validate interfaces and data flow.
-## Current Limitations
-
-The current repository is intentionally a research scaffold, not a solved document understanding system.
-
-Current limitations include:
-- layout detection in the main pipeline is still placeholder logic rather than a strong document parsing backend,
-- OCR is currently a placeholder transcription stage and does not yet represent a serious scientific PDF OCR module,
-- structure parsing and reading-order recovery still rely on lightweight heuristics,
-- slide planning is a placeholder transformation from document IR to a minimal Beamer-friendly deck plan,
-- rendering currently produces a simple Beamer output rather than a layout-aware presentation design system.
-
-The next replacement plan is to swap placeholder stages one by one while preserving the pipeline contract:
-- replace placeholder layout analysis with a stronger document parsing or detection module,
-- replace placeholder OCR with a reproducible OCR or transcription backend,
-- strengthen reading-order and structure parsing for two-column scientific papers,
-- improve the intermediate representation for figures, tables, formulas, and captions,
-- replace the current slide planner with a module that makes explicit content-selection and layout decisions.
-
-## Future Work / Research Direction
-
-Planned next steps include:
-- replacing placeholder layout analysis with document parsing models,
-- improving OCR and reading-order recovery for scientific PDFs,
-- designing stronger intermediate representations for figures, tables, and formulas,
-- developing better slide planning and layout generation modules,
-- evaluating the system on paper-slide pairs from academic domains.
-
-The long-term goal is a robust system for converting complex academic papers into coherent, presentation-quality slides while preserving both content fidelity and structural logic.
+The repository contains no source PDFs or full transcriptions from the evaluation corpus. Use local papers for new baseline runs and consult the research notes for aggregate, reproducible conclusions.
