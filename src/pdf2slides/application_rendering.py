@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import io
-import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -56,6 +55,24 @@ def _draw_text(draw: ImageDraw.ImageDraw, lines: list[str], box: PixelBox, font:
         y += line_height
 
 
+def _draw_body(draw: ImageDraw.ImageDraw, slide: Slide, layout: ApplicationLayout, font: ImageFont.ImageFont) -> None:
+    box = layout.body_box
+    marker_width = 18
+    text_x = box.x + marker_width
+    text_width = box.width - marker_width
+    line_height = draw.textbbox((0, 0), "Ag", font=font)[3] + 6
+    y = box.y
+    for bullet in slide.bullets:
+        lines = _wrap(draw, bullet, font, text_width) if layout.body_behavior == "reflow_within_fixed_box" else [bullet]
+        for index, line in enumerate(lines):
+            if draw.textbbox((text_x, y), line, font=font)[2] > box.x + box.width or y + line_height > box.y + box.height:
+                raise ValueError("Text exceeds its layout box")
+            if index == 0:
+                draw.ellipse((box.x, y + 5, box.x + 7, y + 12), fill="#111111")
+            draw.text((text_x, y), line, font=font, fill="#111111")
+            y += line_height
+
+
 def _load_evidence(layout: ApplicationLayout, repository_root: Path) -> Image.Image:
     root = repository_root.resolve()
     path = (root / layout.evidence.repository_path).resolve()
@@ -79,10 +96,7 @@ def render_application_slide(slide: Slide, repository_root: Path) -> bytes:
     title_font = ImageFont.load_default(size=28)
     body_font = ImageFont.load_default(size=18)
     _draw_text(draw, _wrap(draw, slide.title, title_font, layout.title_box.width), layout.title_box, title_font)
-    body_lines: list[str] = []
-    for bullet in slide.bullets:
-        body_lines.extend(_wrap(draw, bullet, body_font, layout.body_box.width - 18))
-    _draw_text(draw, body_lines, layout.body_box, body_font, bullet=True)
+    _draw_body(draw, slide, layout, body_font)
     evidence = _load_evidence(layout, repository_root)
     image.paste(_fit_image(evidence, layout.evidence_box.width, layout.evidence_box.height, layout.evidence.fit), (layout.evidence_box.x, layout.evidence_box.y))
     output = io.BytesIO()

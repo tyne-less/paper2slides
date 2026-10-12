@@ -33,6 +33,7 @@ outputs/<pdf-stem>/
   04_structured_document.json
   05_slide_deck.json
   06_slides.tex
+  RUN_METADATA.json
   RUN_SUMMARY.md
 ```
 
