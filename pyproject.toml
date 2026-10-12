@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "paper2slides"
 version = "0.1.0"
-description = "Minimal modular pipeline for converting academic PDFs into structured slide drafts."
+description = "Evaluation-driven multimodal research pipeline for academic PDF to slide transformation."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["Pillow>=10"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
