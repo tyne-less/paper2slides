@@ -297,9 +297,9 @@ Worker modes: `python -m p2s_service worker` polls until SIGTERM (compose);
 `python -m p2s_service worker --drain` processes every ready job and exits (one Cloud Run job
 execution). An error in drain mode ends the execution with a non-zero exit code.
 
-## Not done yet
+## Scope and known gaps
 
-- An LLM step in the pipeline (planned as an optional plugin, off and mocked by default, with a
-  timeout, rate limit and daily cap).
-- Retention: old PDFs and results are never deleted, so the 1 GB Neon free storage holds
+- The pipeline is rule-based (`pdftotext` plus heuristics) and calls no language model, so the
+  service has no paid external API to time out, rate-limit or cap.
+- No retention yet: old PDFs and results are never deleted, so the 1 GB Neon free storage holds
   roughly 1,200 jobs of the size tested.

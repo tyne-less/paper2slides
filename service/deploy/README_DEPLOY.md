@@ -49,7 +49,7 @@ Locally nothing changes: `docker compose` runs the API, a polling worker, Postgr
 S3-compatible store. Storage is chosen by `P2S_STORAGE_BACKEND` (`s3` locally, `postgres` in
 the cloud), and the worker mode by the `--drain` flag.
 
-The pipeline has no LLM step yet (that is stage 6), so there is no paid API call to switch off.
+The pipeline is rule-based and calls no language model, so there is no paid API call to switch off.
 
 ## Free-tier check (figures read on 2026-11-20)
 
