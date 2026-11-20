@@ -1,0 +1,2 @@
+label=w1-r5 rate=5 duration=60s workers=1 pdf=2024.findings-acl.164.pdf
+max backlog: 8.0

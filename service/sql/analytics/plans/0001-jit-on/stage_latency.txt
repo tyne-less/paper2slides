@@ -1,0 +1,23 @@
+Sort  (cost=44930.01..44930.03 rows=7 width=121) (actual time=88.220..90.480 rows=7 loops=1)
+  Sort Key: (round((percentile_cont('0.95'::double precision) WITHIN GROUP (ORDER BY ((duration_ms)::double precision)))::numeric, 1)) DESC
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=10141 read=5657
+  ->  GroupAggregate  (cost=31562.44..44929.91 rows=7 width=121) (actual time=71.276..90.470 rows=7 loops=1)
+        Group Key: stage
+        Buffers: shared hit=10141 read=5657
+        ->  Gather Merge  (cost=31562.44..43634.07 rows=103649 width=17) (actual time=68.068..80.718 rows=103929 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=10141 read=5657
+              ->  Sort  (cost=30562.42..30670.38 rows=43187 width=17) (actual time=61.270..62.615 rows=34643 loops=3)
+                    Sort Key: stage
+                    Sort Method: quicksort  Memory: 3143kB
+                    Buffers: shared hit=10141 read=5657
+                    Worker 0:  Sort Method: quicksort  Memory: 2216kB
+                    Worker 1:  Sort Method: quicksort  Memory: 2228kB
+                    ->  Parallel Seq Scan on stage_runs  (cost=0.00..27237.38 rows=43187 width=17) (actual time=0.067..56.855 rows=34643 loops=3)
+                          Filter: ((status = 'succeeded'::text) AND (started_at >= (now() - '7 days'::interval)))
+                          Rows Removed by Filter: 425892
+                          Buffers: shared hit=10067 read=5657
+Planning Time: 0.081 ms
+Execution Time: 90.595 ms

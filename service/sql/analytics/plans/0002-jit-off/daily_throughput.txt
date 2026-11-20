@@ -1,0 +1,48 @@
+Merge Left Join  (cost=25032.42..4758140.25 rows=111112222 width=164) (actual time=19.370..29.446 rows=14 loops=1)
+  Merge Cond: (d.day = (date_trunc('day'::text, (jobs_1.created_at AT TIME ZONE 'UTC'::text))))
+  Buffers: shared hit=7499
+  CTE days
+    ->  ProjectSet  (cost=0.00..5.04 rows=1000 width=8) (actual time=0.003..0.004 rows=14 loops=1)
+          ->  Result  (cost=0.00..0.01 rows=1 width=0) (actual time=0.000..0.000 rows=1 loops=1)
+  ->  Merge Left Join  (cost=17250.86..24922.56 rows=333335 width=72) (actual time=15.173..23.334 rows=14 loops=1)
+        Merge Cond: (d.day = (date_trunc('day'::text, (jobs.finished_at AT TIME ZONE 'UTC'::text))))
+        Buffers: shared hit=7390
+        ->  Sort  (cost=69.83..72.33 rows=1000 width=8) (actual time=0.008..0.009 rows=14 loops=1)
+              Sort Key: d.day
+              Sort Method: quicksort  Memory: 25kB
+              ->  CTE Scan on days d  (cost=0.00..20.00 rows=1000 width=8) (actual time=0.004..0.006 rows=14 loops=1)
+        ->  GroupAggregate  (cost=17181.03..20681.05 rows=66667 width=72) (actual time=15.164..23.320 rows=14 loops=1)
+              Group Key: (date_trunc('day'::text, (jobs.finished_at AT TIME ZONE 'UTC'::text)))
+              Buffers: shared hit=7390
+              InitPlan 3 (returns $2)
+                ->  Aggregate  (cost=22.50..22.51 rows=1 width=8) (actual time=0.002..0.002 rows=1 loops=1)
+                      ->  CTE Scan on days days_1  (cost=0.00..20.00 rows=1000 width=8) (actual time=0.000..0.001 rows=14 loops=1)
+              ->  Sort  (cost=17158.52..17325.19 rows=66667 width=37) (actual time=14.369..15.432 rows=29538 loops=1)
+                    Sort Key: (date_trunc('day'::text, (jobs.finished_at AT TIME ZONE 'UTC'::text)))
+                    Sort Method: quicksort  Memory: 2838kB
+                    Buffers: shared hit=7390
+                    ->  Bitmap Heap Scan on jobs  (cost=1253.09..9993.43 rows=66667 width=37) (actual time=1.937..11.668 rows=29538 loops=1)
+                          Recheck Cond: (finished_at >= ($2 AT TIME ZONE 'UTC'::text))
+                          Heap Blocks: exact=7306
+                          Buffers: shared hit=7390
+                          ->  Bitmap Index Scan on ix_jobs_finished_at  (cost=0.00..1236.43 rows=66667 width=0) (actual time=1.349..1.349 rows=29538 loops=1)
+                                Index Cond: (finished_at >= ($2 AT TIME ZONE 'UTC'::text))
+                                Buffers: shared hit=84
+  ->  GroupAggregate  (cost=7776.53..9276.54 rows=66667 width=16) (actual time=4.189..6.091 rows=14 loops=1)
+        Group Key: (date_trunc('day'::text, (jobs_1.created_at AT TIME ZONE 'UTC'::text)))
+        Buffers: shared hit=109
+        InitPlan 2 (returns $1)
+          ->  Aggregate  (cost=22.50..22.51 rows=1 width=8) (actual time=0.003..0.003 rows=1 loops=1)
+                ->  CTE Scan on days  (cost=0.00..20.00 rows=1000 width=8) (actual time=0.001..0.001 rows=14 loops=1)
+        ->  Sort  (cost=7754.02..7920.69 rows=66667 width=8) (actual time=4.019..4.735 rows=29538 loops=1)
+              Sort Key: (date_trunc('day'::text, (jobs_1.created_at AT TIME ZONE 'UTC'::text)))
+              Sort Method: quicksort  Memory: 769kB
+              Buffers: shared hit=109
+              ->  Index Only Scan using ix_jobs_created_at on jobs jobs_1  (cost=0.42..2412.43 rows=66667 width=8) (actual time=0.017..3.039 rows=29538 loops=1)
+                    Index Cond: (created_at >= ($1 AT TIME ZONE 'UTC'::text))
+                    Heap Fetches: 0
+                    Buffers: shared hit=109
+Planning:
+  Buffers: shared hit=4
+Planning Time: 0.160 ms
+Execution Time: 29.618 ms

@@ -1,0 +1,48 @@
+time="2026-11-20T08:53:12Z" level=warning msg="Request Failed" error="Post \"http://api:8080/jobs\": write tcp 172.18.0.9:38188->172.18.0.5:8080: write: broken pipe"
+time="2026-11-20T08:53:12Z" level=warning msg="POST /jobs -> 0 write: broken pipe null" source=console
+
+
+  █ THRESHOLDS 
+
+    http_req_duration{name:GET /jobs/{id}}
+    ✗ 'p(95)<500' p(95)=2.19s
+
+    http_req_duration{name:POST /jobs}
+    ✗ 'p(95)<1000' p(95)=3.77s
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.04%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 2211   36.822722/s
+    checks_succeeded...: 99.95% 2210 out of 2211
+    checks_failed......: 0.04%  1 out of 2211
+
+    ✗ POST /jobs is 201
+      ↳  99% — ✓ 1105 / ✗ 1
+    ✓ GET /jobs/{id} is 200
+
+    HTTP
+    http_req_duration..............: avg=1s       min=0s     med=655.95ms p(90)=2.57s p(95)=3.38s p(99)=4.12s max=4.79s
+      { expected_response:true }...: avg=1s       min=2.86ms med=656.18ms p(90)=2.57s p(95)=3.38s p(99)=4.12s max=4.79s
+      { name:GET /jobs/{id} }......: avg=675.35ms min=2.86ms med=446.7ms  p(90)=1.78s p(95)=2.19s p(99)=2.51s max=3.01s
+      { name:POST /jobs }..........: avg=1.32s    min=0s     med=1s       p(90)=3.38s p(95)=3.77s p(99)=4.34s max=4.79s
+    http_req_failed................: 0.04%  1 out of 2211
+    http_reqs......................: 2211   36.822722/s
+
+    EXECUTION
+    dropped_iterations.............: 95     1.582161/s
+    iteration_duration.............: avg=2s       min=2.31ms med=1.48s    p(90)=4.99s p(95)=5.67s p(99)=6.32s max=6.67s
+    iterations.....................: 1106   18.419688/s
+    vus............................: 1      min=1         max=95 
+    vus_max........................: 101    min=20        max=101
+
+    NETWORK
+    data_received..................: 1.1 MB 19 kB/s
+    data_sent......................: 496 MB 8.3 MB/s
+
+
+
+time="2026-11-20T08:53:13Z" level=error msg="thresholds on metrics 'http_req_duration{name:GET /jobs/{id}}, http_req_duration{name:POST /jobs}' have been crossed"

@@ -1,0 +1,46 @@
+time="2026-11-20T08:59:21Z" level=warning msg="Insufficient VUs, reached 200 active VUs and cannot initialize more" executor=constant-arrival-rate scenario=submit
+
+
+  █ THRESHOLDS 
+
+    http_req_duration{name:GET /jobs/{id}}
+    ✗ 'p(95)<500' p(95)=4.67s
+
+    http_req_duration{name:POST /jobs}
+    ✗ 'p(95)<1000' p(95)=6.16s
+
+    http_req_failed
+    ✓ 'rate<0.01' rate=0.00%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 3278    52.227525/s
+    checks_succeeded...: 100.00% 3278 out of 3278
+    checks_failed......: 0.00%   0 out of 3278
+
+    ✓ POST /jobs is 201
+    ✓ GET /jobs/{id} is 200
+
+    HTTP
+    http_req_duration..............: avg=2.92s min=28.95ms  med=2.91s p(90)=5.24s p(95)=5.87s p(99)=7.39s  max=8.58s 
+      { expected_response:true }...: avg=2.92s min=28.95ms  med=2.91s p(90)=5.24s p(95)=5.87s p(99)=7.39s  max=8.58s 
+      { name:GET /jobs/{id} }......: avg=2.37s min=28.95ms  med=2.57s p(90)=4.35s p(95)=4.67s p(99)=5.08s  max=5.22s 
+      { name:POST /jobs }..........: avg=3.47s min=87.01ms  med=3.61s p(90)=5.87s p(95)=6.16s p(99)=7.94s  max=8.58s 
+    http_req_failed................: 0.00%  0 out of 3278
+    http_reqs......................: 3278   52.227525/s
+
+    EXECUTION
+    dropped_iterations.............: 762    12.140749/s
+    iteration_duration.............: avg=5.85s min=122.43ms med=7.14s p(90)=9.1s  p(95)=9.83s p(99)=10.75s max=11.05s
+    iterations.....................: 1639   26.113762/s
+    vus............................: 125    min=14        max=200
+    vus_max........................: 200    min=20        max=200
+
+    NETWORK
+    data_received..................: 1.7 MB 26 kB/s
+    data_sent......................: 735 MB 12 MB/s
+
+
+
+time="2026-11-20T08:59:57Z" level=error msg="thresholds on metrics 'http_req_duration{name:GET /jobs/{id}}, http_req_duration{name:POST /jobs}' have been crossed"

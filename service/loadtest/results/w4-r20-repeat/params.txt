@@ -1,0 +1,2 @@
+label=w4-r20-repeat rate=20 duration=60s workers=4 pdf=2024.findings-acl.164.pdf
+max backlog: 37.0
