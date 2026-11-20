@@ -1,0 +1,10 @@
+# Only the files the service image needs; the research data and experiments stay out.
+*
+!pyproject.toml
+!README.md
+!src/
+!service/
+service/.venv
+service/tests
+service/.p2s-storage
+**/__pycache__

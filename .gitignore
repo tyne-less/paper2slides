@@ -56,3 +56,13 @@ archives/page-object-detection/runs/
 archives/page-object-detection/test_output/
 archives/page-object-detection/yolo_dir/
 archives/page-object-detection/yolo_out_dir/
+
+# Service local state
+service/.p2s-storage/
+service/loadtest/results/*/*.log
+service/loadtest/results/repro-*/
+
+# Terraform local state and inputs
+service/deploy/terraform/.terraform/
+service/deploy/terraform/*.tfstate*
+service/deploy/terraform/terraform.tfvars
