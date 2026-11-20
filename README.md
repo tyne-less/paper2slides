@@ -8,6 +8,18 @@ Paper2Slides studies academic PDF-to-slides generation as a structured document-
 academic PDF -> structured document representation -> slide plan -> presentation output
 ```
 
+## Async job service
+
+[`service/`](service/README.md) runs this pipeline as a web service: upload a PDF over HTTP and a
+worker produces the slide deck in the background. It uses FastAPI and a PostgreSQL job queue
+(`FOR UPDATE SKIP LOCKED`), with deduplication, retries with backoff, timeouts, recovery after
+a killed worker, an audit trail, metrics and k6 load tests. It is deployed on Google Cloud Run
+with Neon Postgres within free tiers. Measurements and design decisions are in
+[`service/README.md`](service/README.md).
+
+論文 PDF からスライドを生成するこのパイプラインを、非同期ジョブ処理の Web サービスとして構築・デプロイしています。
+概要（日本語）は [`service/README.md`](service/README.md#概要日本語) にあります。
+
 ## What runs by default
 
 The public command-line pipeline is a compact, reproducible baseline. It extracts text with `pdftotext`, builds page and block records, applies lightweight structure and reading-order heuristics, writes a structured document JSON file, plans a slide deck, and exports LaTeX Beamer source.

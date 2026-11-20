@@ -1,14 +1,82 @@
 # paper2slides service
 
-An asynchronous job service around the existing `pdf2slides` pipeline (`../src/pdf2slides`).
-A client uploads a PDF, the API queues a job in Postgres, a worker runs the pipeline stage by
-stage, and the slide deck JSON and Beamer file are written to object storage.
+[![ci](https://github.com/tyne-less/paper2slides/actions/workflows/ci.yml/badge.svg)](https://github.com/tyne-less/paper2slides/actions/workflows/ci.yml)
 
-The research code is used as a library and is not modified. The service lives entirely in
-`service/`.
+An asynchronous job service around a research PDF-to-slides pipeline. A client uploads a PDF
+over HTTP; a worker turns it into a slide deck (JSON and LaTeX Beamer) in the background; every
+job's state, attempts, errors and per-stage timings are kept in PostgreSQL. It runs locally with
+Docker Compose and on Google Cloud Run with Neon Postgres, within free tiers.
 
-Status: stages 1–5 done (skeleton, reliable job processing, analytics SQL, observability and load tests, cloud deployment). Deployed to Cloud Run + Neon on 2026-11-20 and checked end to end once (`deploy/README_DEPLOY.md`). Stage 6 (LLM step) not started. Sections below say what exists now and what
-does not yet.
+The pipeline (`../src/pdf2slides`) is existing research code, used here as a library without
+changes. This directory is the work around it: turning a multi-stage pipeline that can hang,
+crash or fail halfway into a service that is reliable, observable and measured.
+
+Stack: Python, FastAPI, PostgreSQL (SQLAlchemy, Alembic), Docker, GitHub Actions, Terraform,
+Cloud Run, Prometheus metrics, k6.
+
+## 概要（日本語）
+
+学術論文の PDF をスライド（JSON と LaTeX Beamer）に変換する研究用パイプラインを、非同期ジョブ処理の
+Web サービスとして構築しました。FastAPI と PostgreSQL（`SELECT … FOR UPDATE SKIP LOCKED` による
+ジョブキュー）で実装し、冪等性、指数バックオフ付きリトライ、タイムアウト、ワーカー強制終了後の復旧、
+全状態遷移の監査ログを備えています。構造化ログと Prometheus メトリクスで処理段階ごとの所要時間を計測し、
+その結果をもとに 1 ジョブあたりのオーバーヘッドを中央値 687 ms から 122 ms に削減しました。k6 による
+負荷試験で見つかった不具合 2 件を修正し、Google Cloud Run と Neon 上に無料枠の範囲でデプロイして
+エンドツーエンドで動作を確認済みです。記載している数値はすべて実測値です。
+
+## Architecture
+
+```mermaid
+flowchart LR
+    client([Client]) -->|"POST /jobs (PDF)"| api[FastAPI API]
+    client -->|"GET /jobs/{id}, /result"| api
+    api -->|"insert job, deduplicated by file hash"| pg[("PostgreSQL<br/>jobs, attempts,<br/>events, stage timings")]
+    api -->|PDF| store[("Object storage<br/>S3 locally, Postgres in the cloud")]
+    worker[Worker] -->|"claim: FOR UPDATE SKIP LOCKED<br/>heartbeat, fenced completion"| pg
+    worker -->|"forkserver: one process per attempt"| pipeline["Pipeline process<br/>7 timed stages"]
+    worker <-->|"PDF in, results out"| store
+    scheduler["Cloud Scheduler<br/>every 15 min"] -.->|"cloud: start one drain run"| worker
+```
+
+Locally the worker polls the queue continuously. In the cloud it runs as a Cloud Run job that
+Cloud Scheduler starts every 15 minutes; each run processes every ready job and exits.
+
+## Measured results
+
+| What | Result | Details |
+|---|---|---|
+| Per-attempt overhead | Median 686.6 ms → 122.2 ms, and 22.9 s → 5.0 s for the same 30 real jobs, after replacing `spawn` with a preloaded `forkserver` | [Per-attempt overhead](#per-attempt-overhead-measured-and-reduced) |
+| Load test, 1 worker, 5 requests/s for 60 s | 0 of 600 HTTP requests failed; `POST /jobs` p95 61.6 ms; submit-to-finish p95 1.27 s | [`loadtest/RESULTS.md`](loadtest/RESULTS.md) |
+| Bugs found by load testing | 2, both fixed: `ON CONFLICT` failing once psycopg prepared the statement (with a regression test); an API connection-pool stall from a sync `yield` dependency | [`loadtest/RESULTS.md`](loadtest/RESULTS.md) |
+| Crash recovery | A real worker and its pipeline process killed with SIGKILL mid-job; another worker completes the job on attempt 2 (automated test) | [Reliability](#reliability) |
+| Analytics queries, 200,000 synthetic jobs | Median time after the index migration: 100.6 → 46.4 ms, 25.6 → 10.6 ms, 48.5 → 29.5 ms | [`sql/analytics/RESULTS.md`](sql/analytics/RESULTS.md) |
+| Cloud | Deployed on 2026-11-20; a scheduled worker run processed a submitted paper with no manual step | [`deploy/README_DEPLOY.md`](deploy/README_DEPLOY.md) |
+
+The load tests ran on one laptop (Apple M3) together with k6 and every container, and
+identical runs varied a lot, so those figures are indicative only.
+
+## Design decisions
+
+- **PostgreSQL as the queue, no Redis.** Claiming a job (`FOR UPDATE SKIP LOCKED`), recording the
+  attempt and writing the audit event happen in one transaction, with one stateful dependency
+  to run. Jobs take tenths of a second to seconds, so queue throughput is not the limit. Cost:
+  an idle worker polls (every second by default), which adds queue wait.
+- **At-least-once, not exactly-once.** A worker can die after doing the work and before
+  recording it, so a job may run twice. Result keys are deterministic, and completion is an
+  `UPDATE … WHERE fence_token = …`, so an attempt that lost its lease cannot overwrite a newer
+  one.
+- **The pipeline runs in a separate process per attempt.** That is what makes a timeout on a
+  hung stage (for example a stuck `pdftotext`) and survival of a crashing stage possible. The
+  process comes from a preloaded `forkserver`; plain `spawn` cost about 0.5 s per attempt.
+- **Not every error is retried.** An exception raised by a pipeline stage is deterministic for
+  the same input and code, so the job fails at once. Timeouts, crashed processes and storage or
+  network errors are retried with jittered exponential backoff.
+- **A scheduled Cloud Run job instead of an always-on worker.** It keeps the deployment within
+  free tiers. Every 10 minutes would exceed them (each execution is billed for at least one
+  minute, and each wakes the Neon compute for at least five); every 15 fits. Cost: a job can
+  wait up to 15 minutes before it starts.
+- **Storage behind an interface.** S3-compatible storage locally; in the cloud, a Postgres table,
+  because the free deployment has no object store. Uploads are capped at 10 MB there.
 
 ## Run locally
 
@@ -33,11 +101,10 @@ Any text-layer PDF works; `python service/scripts/make_sample_pdf.py sample.pdf`
 It uploads the PDF, waits for the job to succeed, checks that a repeat upload returns the same
 job, and downloads the Beamer file.
 
-Local object store: MinIO was the plan, but on 2026-11-20 neither `docker.io/minio/minio` nor
-`quay.io/minio/minio` allowed anonymous pulls, so compose uses SeaweedFS
-(`chrislusf/seaweedfs:3.97`) through the same S3 API. The storage code only depends on the S3
-API (boto3), so this choice is confined to `docker-compose.yml`. The local store runs without
-an S3 identity config and accepts any credentials; it is for local use only.
+The local object store is SeaweedFS (`chrislusf/seaweedfs:3.97`), used through the S3 API.
+MinIO was the first choice, but on 2026-11-20 neither `docker.io/minio/minio` nor
+`quay.io/minio/minio` allowed anonymous pulls. Only `docker-compose.yml` depends on this choice.
+The local store accepts any credentials, so it is for local use only.
 
 ## API
 
@@ -111,8 +178,9 @@ submission).
 
 ## Schema
 
-Defined in `src/p2s_service/db/models.py`, migrated by `alembic/versions/` (0001 initial schema, 0002 analytics indexes)
-(a test checks that the two agree).
+Defined in `src/p2s_service/db/models.py` and migrated by `alembic/versions/` (0001 initial
+schema, 0002 analytics indexes, 0003 object storage table). A test checks that the migrations
+and the models agree.
 
 | Table | Purpose |
 |---|---|
@@ -121,6 +189,7 @@ Defined in `src/p2s_service/db/models.py`, migrated by `alembic/versions/` (0001
 | `job_attempts` | One row per claim, with outcome and error details. |
 | `stage_runs` | Per-stage duration and status for each attempt. |
 | `job_events` | Append-only status history. |
+| `stored_objects` | PDFs and result files when `P2S_STORAGE_BACKEND=postgres` (cloud). |
 
 Indexes: partial index on `jobs(run_after) WHERE status = 'queued'` for claiming, partial index on
 `jobs(lease_expires_at) WHERE status = 'running'` for the reaper, partial unique index on
@@ -235,3 +304,10 @@ Storage backends: `local` (tests), `s3` (compose, any S3-compatible store), `pos
 Worker modes: `python -m p2s_service worker` polls until SIGTERM (compose);
 `python -m p2s_service worker --drain` processes every ready job and exits (one Cloud Run job
 execution). An error in drain mode ends the execution with a non-zero exit code.
+
+## Not done yet
+
+- An LLM step in the pipeline (planned as an optional plugin, off and mocked by default, with a
+  timeout, rate limit and daily cap).
+- Retention: old PDFs and results are never deleted, so the 1 GB Neon free storage holds
+  roughly 1,200 jobs of the size tested.
