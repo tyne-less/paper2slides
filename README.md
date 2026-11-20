@@ -17,8 +17,7 @@ a killed worker, an audit trail, metrics and k6 load tests. It is deployed on Go
 with Neon Postgres within free tiers. Measurements and design decisions are in
 [`service/README.md`](service/README.md).
 
-論文 PDF からスライドを生成するこのパイプラインを、非同期ジョブ処理の Web サービスとして構築・デプロイしています。
-概要（日本語）は [`service/README.md`](service/README.md#概要日本語) にあります。
+論文 PDF からスライドを生成するこのパイプラインを、非同期ジョブ処理の Web サービスとして構築・デプロイしています。概要（日本語）は [`service/README.md`](service/README.md#概要日本語) にあります。
 
 ## What runs by default
 
