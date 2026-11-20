@@ -1,0 +1,46 @@
+Sort  (cost=13850.64..13850.69 rows=20 width=78) (actual time=10.514..10.595 rows=5 loops=1)
+  Sort Key: (count(*)) DESC
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=14252
+  InitPlan 1 (returns $0)
+    ->  Aggregate  (cost=4047.94..4047.95 rows=1 width=8) (actual time=4.505..4.506 rows=1 loops=1)
+          Buffers: shared hit=3384
+          ->  Bitmap Heap Scan on job_attempts  (cost=313.17..4006.41 rows=16612 width=0) (actual time=0.838..4.051 rows=16710 loops=1)
+                Recheck Cond: (finished_at >= (now() - '7 days'::interval))
+                Filter: (outcome <> 'released'::text)
+                Heap Blocks: exact=3335
+                Buffers: shared hit=3384
+                ->  Bitmap Index Scan on ix_job_attempts_finished_at  (cost=0.00..309.01 rows=16612 width=0) (actual time=0.604..0.604 rows=16710 loops=1)
+                      Index Cond: (finished_at >= (now() - '7 days'::interval))
+                      Buffers: shared hit=49
+  ->  GroupAggregate  (cost=9555.98..9802.26 rows=20 width=78) (actual time=10.118..10.591 rows=5 loops=1)
+        Group Key: a.error_type, a.outcome
+        Buffers: shared hit=14252
+        ->  Gather Merge  (cost=9555.98..9769.69 rows=1835 width=56) (actual time=5.485..5.866 rows=1863 loops=1)
+              Workers Planned: 2
+              Workers Launched: 2
+              Buffers: shared hit=10868
+              ->  Sort  (cost=8555.95..8557.86 rows=765 width=56) (actual time=3.698..3.716 rows=621 loops=3)
+                    Sort Key: a.error_type, a.outcome, a.job_id
+                    Sort Method: quicksort  Memory: 96kB
+                    Buffers: shared hit=10868
+                    Worker 0:  Sort Method: quicksort  Memory: 62kB
+                    Worker 1:  Sort Method: quicksort  Memory: 55kB
+                    ->  Nested Loop  (cost=309.89..8519.31 rows=765 width=56) (actual time=0.326..3.257 rows=621 loops=3)
+                          Buffers: shared hit=10838
+                          ->  Parallel Bitmap Heap Scan on job_attempts a  (cost=309.47..3808.91 rows=765 width=38) (actual time=0.313..1.998 rows=621 loops=3)
+                                Recheck Cond: (finished_at >= (now() - '7 days'::interval))
+                                Filter: (outcome <> ALL ('{succeeded,released}'::text[]))
+                                Rows Removed by Filter: 4949
+                                Heap Blocks: exact=1634
+                                Buffers: shared hit=3384
+                                ->  Bitmap Index Scan on ix_job_attempts_finished_at  (cost=0.00..309.01 rows=16612 width=0) (actual time=0.648..0.649 rows=16710 loops=1)
+                                      Index Cond: (finished_at >= (now() - '7 days'::interval))
+                                      Buffers: shared hit=49
+                          ->  Index Scan using jobs_pkey on jobs j  (cost=0.42..6.16 rows=1 width=34) (actual time=0.002..0.002 rows=1 loops=1863)
+                                Index Cond: (id = a.job_id)
+                                Buffers: shared hit=7454
+Planning:
+  Buffers: shared hit=20
+Planning Time: 0.200 ms
+Execution Time: 10.661 ms

@@ -1,0 +1,84 @@
+# Local stack: docker compose -f service/docker-compose.yml up --build
+# All credentials below are local-only defaults; override them through the environment.
+name: p2s
+
+x-app: &app
+  image: p2s-service:local
+  # Built once by the api service; migrate and worker reuse the same image.
+  pull_policy: never
+  environment:
+    P2S_DATABASE_URL: postgresql+psycopg://p2s:${POSTGRES_PASSWORD:-p2s-local}@db:5432/p2s
+    P2S_STORAGE_BACKEND: s3
+    P2S_S3_ENDPOINT_URL: http://objectstore:8333
+    P2S_S3_BUCKET: p2s
+    P2S_S3_CREATE_BUCKET: "true"
+    AWS_ACCESS_KEY_ID: local-dev-key
+    AWS_SECRET_ACCESS_KEY: local-dev-secret
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: p2s
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-p2s-local}
+      POSTGRES_DB: p2s
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "p2s", "-d", "p2s"]
+      interval: 2s
+      retries: 30
+
+  # MinIO no longer publishes public images (docker.io/minio/minio and quay.io both
+  # refused pulls on 2026-11-20), so SeaweedFS stands in as the local S3-compatible store.
+  # It runs without an S3 identity config here, which means it accepts any credentials.
+  objectstore:
+    image: chrislusf/seaweedfs:3.97
+    command: server -dir=/data -s3 -s3.port=8333
+    volumes:
+      - objectstore-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
+      interval: 2s
+      start_period: 60s
+      retries: 30
+
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    <<: *app
+    build:
+      context: ..
+      dockerfile: service/Dockerfile
+    pull_policy: build
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      objectstore:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "p2s_service", "worker"]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      objectstore:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  objectstore-data:

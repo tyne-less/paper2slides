@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (git-ignored) when running terraform by hand.
+# deploy.sh passes project_id, region and image itself.
+project_id        = "your-project-id"
+region            = "us-central1"
+image             = "us-central1-docker.pkg.dev/your-project-id/p2s/p2s-service:TAG"
+worker_schedule   = "*/15 * * * *"
+api_public        = false
+github_repository = "" # e.g. "owner/repo" to enable keyless deploys from GitHub Actions

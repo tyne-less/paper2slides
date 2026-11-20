@@ -1,0 +1,16 @@
+-[ RECORD 1 ]-------------+------
+jobs                      | 1012
+succeeded                 | 1012
+dead                      | 0
+unfinished                | 0
+extra_attempts            | 0
+submit_window_s           | 62.2
+processed_per_s           | 9.72
+drain_after_last_submit_s | 41.9
+queue_wait_p50_s          | 21.14
+queue_wait_p95_s          | 40.04
+e2e_p50_s                 | 21.62
+e2e_p95_s                 | 40.29
+attempt_p50_ms            | 290
+attempt_p95_ms            | 859
+

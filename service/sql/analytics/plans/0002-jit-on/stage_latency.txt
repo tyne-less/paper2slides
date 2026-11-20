@@ -1,0 +1,22 @@
+Sort  (cost=32425.52..32425.54 rows=7 width=121) (actual time=47.374..47.375 rows=7 loops=1)
+  Sort Key: (round((percentile_cont('0.95'::double precision) WITHIN GROUP (ORDER BY ((duration_ms)::double precision)))::numeric, 1)) DESC
+  Sort Method: quicksort  Memory: 25kB
+  Buffers: shared hit=10772, temp read=368 written=369
+  ->  GroupAggregate  (cost=30843.74..32425.42 rows=7 width=121) (actual time=35.103..47.366 rows=7 loops=1)
+        Group Key: stage
+        Buffers: shared hit=10772, temp read=368 written=369
+        ->  Sort  (cost=30843.74..31107.32 rows=105430 width=17) (actual time=32.960..38.015 rows=103929 loops=1)
+              Sort Key: stage
+              Sort Method: external merge  Disk: 2944kB
+              Buffers: shared hit=10772, temp read=368 written=369
+              ->  Bitmap Heap Scan on stage_runs  (cost=2012.42..19884.76 rows=105430 width=17) (actual time=3.047..18.815 rows=103929 loops=1)
+                    Recheck Cond: (started_at >= (now() - '7 days'::interval))
+                    Filter: (status = 'succeeded'::text)
+                    Rows Removed by Filter: 1863
+                    Heap Blocks: exact=10480
+                    Buffers: shared hit=10772
+                    ->  Bitmap Index Scan on ix_stage_runs_started_at  (cost=0.00..1986.06 rows=107417 width=0) (actual time=2.218..2.218 rows=105792 loops=1)
+                          Index Cond: (started_at >= (now() - '7 days'::interval))
+                          Buffers: shared hit=292
+Planning Time: 0.074 ms
+Execution Time: 47.624 ms

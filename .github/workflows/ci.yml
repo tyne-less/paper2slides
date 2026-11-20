@@ -1,0 +1,91 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  research-tests:
+    name: existing research tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - run: pip install -e . "pytest>=8"
+      # pytest runs the unittest suite unchanged (29 tests, same as `unittest discover`).
+      - run: python -m pytest tests -p no:cacheprovider
+        env:
+          PYTHONPATH: src:.
+
+  service-tests:
+    name: service tests
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: p2s
+          POSTGRES_PASSWORD: p2s
+          POSTGRES_DB: p2s_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U p2s" --health-interval 2s --health-retries 30
+    env:
+      P2S_TEST_DATABASE_URL: postgresql+psycopg://p2s:p2s@localhost:5432/p2s_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - run: pip install -c service/requirements.lock -e . -e "./service[dev]"
+      - run: pytest
+        working-directory: service
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install "ruff==0.17.6"
+      - run: ruff check .
+        working-directory: service
+      - run: ruff format --check .
+        working-directory: service
+
+  terraform:
+    name: terraform fmt and validate (no cloud access)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: service/deploy/terraform
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+
+  image:
+    name: build image and smoke test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker compose -f service/docker-compose.yml up --build -d
+      # No PDF is committed to this repository, so the smoke test uses a generated one.
+      - run: |
+          pip install -c service/requirements.lock pymupdf
+          python service/scripts/make_sample_pdf.py "$RUNNER_TEMP/sample.pdf"
+      - run: service/scripts/smoke_test.sh "$RUNNER_TEMP/sample.pdf"
+      - if: failure()
+        run: docker compose -f service/docker-compose.yml logs
+      - if: always()
+        run: docker compose -f service/docker-compose.yml down -v
