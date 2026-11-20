@@ -252,7 +252,7 @@ def build_page_blocks(page_number: int, page_text: str, reading_order_start: int
     blocks: list[Block] = []
     for index, paragraph in enumerate(paragraphs, start=1):
         block_type = classify_paragraph(paragraph, index)
-        if block_type == "figure_caption":
+        if block_type in {"figure_caption", "table_caption"}:
             paragraph = clean_caption_text(paragraph)
         bbox = fake_bbox(index)
         blocks.append(
@@ -299,10 +299,10 @@ def apply_hybrid_body_order(default_blocks: list[Block], column_text: str) -> li
     return merged
 
 
-def run_placeholder_ocr(pages: list[Page]) -> list[Page]:
+def transcribe_text_layer_blocks(pages: list[Page]) -> list[Page]:
     for page in pages:
         for block in page.blocks:
-            block.source = "placeholder_ocr"
+            block.source = "pdftotext_text_layer"
     return pages
 
 
@@ -411,9 +411,22 @@ def generate_slide_deck(document: StructuredDocument, output_dir: Path) -> Slide
     )
 
 
-def render_beamer(deck: SlideDeck, output_path: Path) -> str:
+def render_beamer(deck: SlideDeck, output_path: Path, application_assets: dict[str, str] | None = None) -> str:
     frames: list[str] = []
+    has_application_layout = any(slide.application_layout is not None for slide in deck.slides)
     for slide in deck.slides:
+        if slide.application_layout is not None:
+            if application_assets is None or slide.slide_id not in application_assets:
+                raise ValueError(f"Missing rendered application asset for {slide.slide_id}")
+            asset = application_assets[slide.slide_id]
+            if "{" in asset or "}" in asset or Path(asset).is_absolute() or ".." in Path(asset).parts:
+                raise ValueError("Application asset path must be a contained relative path")
+            frames.append(
+                "\\begin{frame}[plain]\n"
+                f"  \\includegraphics[width=\\paperwidth,height=\\paperheight]{{\\detokenize{{{asset}}}}}\n"
+                "\\end{frame}\n"
+            )
+            continue
         bullets = "\n".join(f"    \\item {escape_latex(item)}" for item in slide.bullets)
         frame = (
             f"\\begin{{frame}}{{{escape_latex(slide.title)}}}\n"
@@ -427,7 +440,8 @@ def render_beamer(deck: SlideDeck, output_path: Path) -> str:
     latex = (
         "\\documentclass{beamer}\n"
         "\\usetheme{default}\n"
-        "\\title{Minimal PDF to Slides Output}\n"
+        + ("\\usepackage{graphicx}\n" if has_application_layout else "")
+        + "\\title{Minimal PDF to Slides Output}\n"
         "\\begin{document}\n"
         "\\frame{\\titlepage}\n"
         f"{''.join(frames)}"
@@ -517,18 +531,17 @@ def strip_inline_footnote_markers(text: str) -> str:
 
 
 def split_inline_caption_paragraphs(text: str) -> list[str]:
-    if not re.match(r"^(Figure|Table)\s+\d+:", text):
-        return [text]
-
     starts = [match.start() for match in re.finditer(r"(Figure|Table)\s+\d+:", text)]
-    if len(starts) <= 1:
+    if not starts:
         return [text]
 
     parts: list[str] = []
+    if starts[0] > 0:
+        parts.append(text[: starts[0]].strip())
     for index, start in enumerate(starts):
         end = starts[index + 1] if index + 1 < len(starts) else len(text)
         parts.append(text[start:end].strip())
-    return parts
+    return [part for part in parts if part]
 
 
 def split_inline_label_paragraphs(text: str) -> list[str]:
@@ -624,11 +637,13 @@ def classify_paragraph(paragraph: str, index: int) -> str:
     compact = paragraph.strip()
     if looks_like_section_header(compact):
         return "section_header"
+    lowered = compact.lower()
+    if re.match(r"^(figure|fig\.)\s+\d+:", lowered):
+        return "figure_caption"
+    if re.match(r"^table\s+\d+:", lowered):
+        return "table_caption"
     if index == 1 and len(compact.split()) <= 20:
         return "title"
-    lowered = compact.lower()
-    if re.match(r"^(figure|fig\.|table)\s+\d+:", lowered):
-        return "figure_caption"
     if looks_like_formula_block(compact):
         return "formula_like"
     return "paragraph"
@@ -637,6 +652,8 @@ def classify_paragraph(paragraph: str, index: int) -> str:
 def looks_like_formula_block(text: str) -> bool:
     compact = text.strip()
     if "\\" in compact:
+        if len(compact.split()) >= 40 and sum(compact.count(mark) for mark in ".!?:") >= 2:
+            return False
         return True
     if "=" not in compact:
         return False
@@ -662,7 +679,7 @@ def looks_like_formula_block(text: str) -> bool:
 
 
 def clean_caption_text(text: str) -> str:
-    stripped = text.strip()
+    stripped = clean_caption_math_artifacts(text.strip())
     sentence_break = stripped.rfind(". ")
     if sentence_break == -1:
         return stripped
@@ -673,6 +690,13 @@ def clean_caption_text(text: str) -> str:
     if not re.match(r"^[A-Za-z0-9#%/+\-\"'().]+(?:\s+[A-Za-z0-9#%/+\-\"'().]+){0,3}$", suffix):
         return stripped
     return stripped[: sentence_break + 1]
+
+
+def clean_caption_math_artifacts(text: str) -> str:
+    text = re.sub(r"\s+([,.;:])", r"\1", text)
+    text = re.sub(r"([A-Za-z])´(?=\d)", r"\1-", text)
+    text = re.sub(r"\b([A-Za-z])\s+([A-Za-z])([+-]?\d*)\b", r"\1\2\3", text)
+    return text
 
 
 def looks_like_section_header(text: str) -> bool:

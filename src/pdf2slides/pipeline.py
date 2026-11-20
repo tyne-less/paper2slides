@@ -13,8 +13,8 @@ from .stages import (
     parse_structure,
     render_beamer,
     run_pdftotext,
-    run_placeholder_ocr,
     split_into_pages,
+    transcribe_text_layer_blocks,
     write_json,
 )
 
@@ -48,7 +48,7 @@ def run_pipeline(
     write_json(pages_path, [page.to_dict() for page in pages])
 
     pages = detect_layout_blocks(pages, column_pages=column_pages, hybrid_body_order=pdftotext_mode == "hybrid")
-    pages = run_placeholder_ocr(pages)
+    pages = transcribe_text_layer_blocks(pages)
     write_json(blocks_path, [page.to_dict() for page in pages])
 
     structured_document = parse_structure(input_pdf, pages)
@@ -88,8 +88,9 @@ def build_summary(structured_document, slide_deck, metadata: dict[str, object]) 
         f"- Metadata file: `{metadata['metadata_file']}`",
         "",
         "## Notes",
-        "- This is a placeholder end-to-end pipeline.",
-        "- Layout detection, OCR, structure parsing, and slide generation are heuristic modules.",
+        "- This is a lightweight end-to-end pipeline.",
+        "- Layout detection, structure parsing, and slide generation are heuristic modules.",
+        "- Block transcription currently uses the PDF text layer through pdftotext.",
         "- The current goal is to validate interfaces and intermediate outputs, not model accuracy.",
     ]
     return "\n".join(lines) + "\n"
@@ -113,11 +114,12 @@ def build_run_metadata(
         "git_commit": get_git_commit(),
         "raw_text_char_count": len(raw_text),
         "pdftotext_mode": pdftotext_mode,
+        "transcription_backend": "pdftotext_text_layer",
         "stages": [
             "extract_text_from_pdf",
             "split_into_pages",
             "detect_layout_blocks",
-            "run_placeholder_ocr",
+            "transcribe_text_layer_blocks",
             "parse_structure",
             "generate_slide_deck",
             "render_beamer",
