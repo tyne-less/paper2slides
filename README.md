@@ -1,27 +1,76 @@
 # Paper2Slides
 
-> An evaluation-driven multimodal research prototype for transforming academic PDFs into structured presentation outputs.
+**English** | [日本語](README.ja.md)
 
-Paper2Slides studies academic PDF-to-slides generation as a structured document-understanding problem, not simply text summarization. A useful presentation needs recoverable document structure, readable order, grounded visual evidence, and an explicit slide plan before it can be rendered.
+[![ci](https://github.com/tyne-less/paper2slides/actions/workflows/ci.yml/badge.svg)](https://github.com/tyne-less/paper2slides/actions/workflows/ci.yml)
 
-```text
-academic PDF -> structured document representation -> slide plan -> presentation output
+Paper2Slides turns academic PDFs into structured slide decks. The repository has two parts:
+
+- **A research pipeline** ([`src/pdf2slides`](src/pdf2slides), evaluated in [`research/`](research/README.md))
+  that treats PDF-to-slides as a document-understanding problem: recover the structure and
+  reading order of a paper, plan slides from it, and export LaTeX Beamer, keeping every
+  intermediate result inspectable.
+- **An asynchronous job service** ([`service/`](service/README.md)) that runs the pipeline behind
+  an HTTP API: a PostgreSQL job queue with deduplication, retries, timeouts, crash recovery and
+  an audit trail, measured with metrics and load tests, and deployed on Google Cloud Run with
+  Neon Postgres within free tiers.
+
+## How it fits together
+
+```mermaid
+flowchart LR
+    pdf([Academic PDF]) -->|"POST /jobs"| api
+    subgraph svc ["service/: async job service"]
+        api[FastAPI API] -->|"job, deduplicated by file hash"| queue[("PostgreSQL<br/>job queue, attempts,<br/>audit events, timings")]
+        worker[Worker] -->|"claim with SKIP LOCKED,<br/>lease, fenced completion"| queue
+    end
+    worker -->|"one process per attempt,<br/>with timeout"| pipeline
+    subgraph pipeline ["src/pdf2slides: research pipeline"]
+        direction LR
+        extract[Extract text] --> blocks[Pages and<br/>layout blocks] --> structure[Structure and<br/>reading order] --> plan[Slide plan] --> beamer[Beamer export]
+    end
+    pipeline --> out([Slide deck JSON<br/>and Beamer source])
+    research["research/: evaluation sets,<br/>protocols, experiment records"] -.->|evaluates| pipeline
 ```
 
-## Async job service
+## Highlights
 
-[`service/`](service/README.md) runs this pipeline as a web service: upload a PDF over HTTP and a
-worker produces the slide deck in the background. It uses FastAPI and a PostgreSQL job queue
-(`FOR UPDATE SKIP LOCKED`), with deduplication, retries with backoff, timeouts, recovery after
-a killed worker, an audit trail, metrics and k6 load tests. It is deployed on Google Cloud Run
-with Neon Postgres within free tiers. Measurements and design decisions are in
-[`service/README.md`](service/README.md).
+All figures are measured; each links to how it was obtained.
 
-論文 PDF からスライドを生成するこのパイプラインを、非同期ジョブ処理の Web サービスとして構築・デプロイしています。概要（日本語）は [`service/README.md`](service/README.md#概要日本語) にあります。
+| Area | Result | Details |
+|---|---|---|
+| Service: per-attempt overhead | Median 686.6 ms → 122.2 ms on the same 30 real jobs, after per-phase timings showed that process start-up dominated | [service README](service/README.md#per-attempt-overhead-measured-and-reduced) |
+| Service: load test | 1 worker at 5 requests/s for 60 s: 0 of 600 requests failed, `POST /jobs` p95 61.6 ms, submit-to-finish p95 1.27 s (one laptop, indicative only) | [`service/loadtest/RESULTS.md`](service/loadtest/RESULTS.md) |
+| Service: reliability | A worker killed with SIGKILL mid-job is recovered by another worker; 2 bugs found by load testing were fixed | [service README](service/README.md#reliability) |
+| Service: deployment | Running on Cloud Run + Neon since 2026-11-20; a scheduled worker run processed a submitted paper with no manual step | [`service/deploy/README_DEPLOY.md`](service/deploy/README_DEPLOY.md) |
+| Research: structure recovery | On an eight-paper benchmark: title 8/8, abstract 8/8, sections 71/71, subsections 91/91 | [`research/README.md`](research/README.md#document-reconstruction-and-reading-order) |
+| Research: harder targets | Paragraph anchors 340/355, paragraph order 291/340, figure captions 22/23, table captions 35/36 | [reconstruction note](research/docs/reconstruction-evaluation.md) |
 
-## What runs by default
+## Repository map
 
-The public command-line pipeline is a compact, reproducible baseline. It extracts text with `pdftotext`, builds page and block records, applies lightweight structure and reading-order heuristics, writes a structured document JSON file, plans a slide deck, and exports LaTeX Beamer source.
+| Path | What it is |
+|---|---|
+| [`service/`](service/README.md) | The async job service: API, worker, queue, migrations, tests, load tests, analytics SQL, Docker Compose, Terraform |
+| [`src/pdf2slides/`](src/pdf2slides) | The research pipeline (Python package `pdf2slides`) and its CLI |
+| [`tests/`](tests) | Tests for the pipeline |
+| [`research/`](research/README.md) | Research notes, evaluation protocols, evaluation-set definitions, experiment records and an example output |
+| [`.github/workflows/`](.github/workflows) | CI (pipeline tests, service tests, lint, Terraform validation, image build with smoke test) and a manual deploy workflow |
+
+## Quick start
+
+Run the service locally (requires Docker):
+
+```bash
+docker compose -f service/docker-compose.yml up --build
+python service/scripts/make_sample_pdf.py sample.pdf   # needs pymupdf; any text-layer PDF works
+service/scripts/smoke_test.sh sample.pdf
+```
+
+This starts the API on `http://localhost:8080` (Swagger UI at `/docs`), a worker, Postgres and an
+S3-compatible store; the smoke test uploads the PDF, waits for the job and downloads the Beamer
+file.
+
+Or run the pipeline directly from the command line:
 
 ```bash
 python3 -m venv .venv
@@ -32,9 +81,8 @@ python3 -m pip install -e .
 python3 -m pdf2slides path/to/local-paper.pdf --output-root outputs
 ```
 
-On macOS, install Poppler with `brew install poppler`; on Ubuntu or Debian, use `sudo apt-get install poppler-utils`.
-
-The baseline produces explicit intermediate artifacts:
+On macOS, install Poppler with `brew install poppler`; on Ubuntu or Debian, use
+`sudo apt-get install poppler-utils`. Each run writes every intermediate artifact:
 
 ```text
 outputs/<pdf-stem>/
@@ -48,51 +96,36 @@ outputs/<pdf-stem>/
   RUN_SUMMARY.md
 ```
 
-## Research modules
+## The service
 
-The repository also includes reusable components developed alongside the baseline. They are deliberately separate from the default CLI while their integration is evaluated:
+The pipeline is a sequence of stages that can hang (a stuck `pdftotext`), crash, or fail on one
+document. The service makes running it reliable and observable: deduplicated submissions, a
+PostgreSQL queue claimed with `FOR UPDATE SKIP LOCKED`, at-least-once execution with fenced
+completion, retries with jittered backoff for transient errors only, per-attempt timeouts in a
+separate process, recovery after a killed worker, graceful shutdown, and an audit row for every
+status change. Structured logs and Prometheus metrics record each processing phase; analytics
+SQL reports stage latency percentiles, failures by error type and daily throughput.
 
-- `page_regions.py` converts YOLO-format page labels into page-coordinate region records.
-- `schema.py` defines an optional slide application-layout contract for a title, body, and visual-evidence region.
-- `application_rendering.py` deterministically renders an application-layout slide PNG from a checked evidence asset.
-- `application_variants.py` creates isolated layout variants without changing the source deck.
+Architecture, design decisions with their trade-offs, and all measurements:
+[`service/README.md`](service/README.md).
 
-These modules support controlled experiments in layout, crop/fit behavior, and visual evidence selection. They do not imply that the default baseline already performs learned layout prediction or production-quality presentation design.
+## The research
 
-## Research progress
+The default pipeline is a compact, reproducible baseline: it extracts text with `pdftotext`,
+builds page and block records, applies lightweight structure and reading-order heuristics,
+writes a structured document JSON file, plans a slide deck, and exports LaTeX Beamer source.
+High-level structure recovery is stable on the benchmark; paragraph boundaries, local reading
+order, captions, formulas, tables and footnotes remain the open problems. The research also
+covers human-authored evaluation fixtures, downstream slide generation and source grouping.
 
-### Document reconstruction and reading order
-
-On a frozen eight-paper aggregate benchmark, high-level structure recovery is stable: title `8/8`, abstract `8/8`, normalized sections `71/71`, and subsections `91/91`. Fine-grained reconstruction remains harder: paragraph anchors `340/355`, paragraph order `291/340`, figure captions `22/23`, figure-caption order `20/22`, and table captions `35/36`.
-
-These are diagnostic aggregate results, not a claim that every document object is fully reconstructed. They show that paragraph boundaries, local reading order, captions, formulas, tables, and footnotes remain central research problems. See [the reconstruction note](docs/research/reconstruction-evaluation.md) and [the reading-order evaluation guide](docs/reading-order-evaluation.md).
-
-### Human-authored structural evaluation
-
-The project has progressed from proxy-only reading-order scores to parser-independent, human-authored fixtures. Fixtures can represent paragraphs, formulas, table bodies, footnotes, and page or column structure when available. Parser candidates are reviewed against these references rather than treated as ground truth. [The fixture-evaluation note](docs/research/human-fixture-evaluation.md) describes the public methodology and its boundaries.
-
-### Downstream slide generation
-
-Research prototypes cover slide planning, visual-evidence selection, layout variants, deterministic rendering, crop/fit behavior, human visual judgment, and downstream slide-impact analysis. These experiments test whether reconstructed evidence improves a slide, rather than assuming that successful extraction is sufficient.
-
-### Source grouping
-
-Source grouping research found that token coverage alone cannot establish whether a group is clean. Combined diagnostics can distinguish clean groups from boundary, identity, and incomplete-export failures; reviewed trim proposals provide a practical repair mechanism for boundary over-inclusion. [The source-grouping note](docs/research/source-grouping.md) records the supported conclusion and its limits.
-
-## Demo snapshot
-
-The checked-in [initial research proposal snapshot](examples/2025-04-20-initial-research-proposal/README.md) is a small, inspectable example of the default pipeline. It includes raw extraction, page and block representations, a structured-document IR, a slide plan, and Beamer source. The original PDF is intentionally not redistributed.
-
-## Scope and limitations
-
-Paper2Slides is a research prototype with an end-to-end scaffold and increasingly rigorous evaluation. The default pipeline still uses lightweight extraction, parsing, and slide-planning heuristics. Experimental modules are not silently substituted into that path. The work does not yet claim robust performance across arbitrary publication styles or a completed automatic paper-to-slides system.
+Results, methods and limitations: [`research/README.md`](research/README.md). The pipeline is a
+research prototype; it does not claim robust performance across arbitrary publication styles.
 
 ## Development
 
-Run the tests with:
-
 ```bash
-python3 -m unittest discover -s tests
+python3 -m unittest discover -s tests          # pipeline tests
 ```
 
-The repository contains no source PDFs or full transcriptions from the evaluation corpus. Use local papers for new baseline runs and consult the research notes for aggregate, reproducible conclusions.
+Service tests need Postgres; see [`service/README.md`](service/README.md#tests-and-ci). The
+repository contains no source PDFs or full transcriptions from the evaluation corpus.

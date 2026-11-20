@@ -1,5 +1,7 @@
 # paper2slides service
 
+[← Paper2Slides](../README.md) · 日本語の概要: [README.ja.md](../README.ja.md#サービス)
+
 [![ci](https://github.com/tyne-less/paper2slides/actions/workflows/ci.yml/badge.svg)](https://github.com/tyne-less/paper2slides/actions/workflows/ci.yml)
 
 An asynchronous job service around a research PDF-to-slides pipeline. A client uploads a PDF
@@ -13,10 +15,6 @@ crash or fail halfway into a service that is reliable, observable and measured.
 
 Stack: Python, FastAPI, PostgreSQL (SQLAlchemy, Alembic), Docker, GitHub Actions, Terraform,
 Cloud Run, Prometheus metrics, k6.
-
-## 概要（日本語）
-
-学術論文の PDF をスライド（JSON と LaTeX Beamer）に変換する研究用パイプラインを、非同期ジョブ処理のWeb サービスとして構築しました。FastAPI と PostgreSQL（`SELECT … FOR UPDATE SKIP LOCKED` によるジョブキュー）で実装し、冪等性、指数バックオフ付きリトライ、タイムアウト、ワーカー強制終了後の復旧、全状態遷移の監査ログを備えています。構造化ログと Prometheus メトリクスで処理段階ごとの所要時間を計測し、その結果をもとに 1 ジョブあたりのオーバーヘッドを中央値 687 ms から 122 ms に削減しました。k6 による負荷試験で見つかった不具合 2 件を修正し、Google Cloud Run と Neon 上に無料枠の範囲でデプロイしてエンドツーエンドで動作を確認済みです。記載している数値はすべて実測値です。
 
 ## Architecture
 

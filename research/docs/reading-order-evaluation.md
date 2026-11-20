@@ -35,4 +35,4 @@ Paragraph-anchor matching detects whether an intended paragraph surface can be f
 
 Human-authored fixtures can express the document units that a parser should recover, independently of the parser's own segmentation. They support review of one-to-one, many-to-one, and split-required correspondence. This matters because a parser block can span multiple real paragraphs, which a one-block-one-unit metric would otherwise hide.
 
-See [human-fixture evaluation](research/human-fixture-evaluation.md) for the methodology and [reconstruction evaluation](research/reconstruction-evaluation.md) for benchmark interpretation.
+See [human-fixture evaluation](human-fixture-evaluation.md) for the methodology and [reconstruction evaluation](reconstruction-evaluation.md) for benchmark interpretation.

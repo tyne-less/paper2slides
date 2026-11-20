@@ -21,7 +21,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--gold-root",
         type=Path,
-        default=Path("eval-sets/findings-acl-2024-v1-annotations"),
+        default=Path("research/eval-sets/findings-acl-2024-v1-annotations"),
         help="Directory containing gold annotation JSON files.",
     )
     parser.add_argument(
