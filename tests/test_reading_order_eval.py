@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from scripts.eval_reading_order import first_match_indices, normalize_text, strip_citation_spans
+from research.scripts.eval_reading_order import first_match_indices, normalize_text, strip_citation_spans
 
 
 class ReadingOrderEvalTest(unittest.TestCase):

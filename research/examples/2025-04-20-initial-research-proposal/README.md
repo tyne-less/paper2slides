@@ -21,4 +21,4 @@ Purpose:
 Note:
 - labels such as `placeholder_ocr` and `Minimal placeholder pipeline output` are preserved inside the historical generated artifacts; they describe that early baseline, not the current project positioning,
 - the snapshot contains no source PDF, local path, or full evaluation-paper transcription,
-- current aggregate results and research methods are documented in the repository root and `docs/research/`.
+- current aggregate results and research methods are documented in `research/README.md` and `research/docs/`.
